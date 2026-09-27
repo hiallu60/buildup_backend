@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: buildup
+
+  datasource:
+    url: jdbc:mysql://localhost:3306/buildup_local?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=Asia/Seoul
+    username: buildup_app
+    password: ${LOCAL_DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+    properties:
+      hibernate:
+        format_sql: true
+
+    show-sql: true
+
+  flyway:
+    enabled: true
+
+server:
+  port: 8080

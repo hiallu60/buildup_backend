@@ -40,6 +40,7 @@ out/
 .env
 *.env
 application-secret.yml
+application-local.yml
 *.pem
 *.key
 

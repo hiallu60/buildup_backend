@@ -257,22 +257,26 @@ Content-Type: application/json
 
 ```json
 {
+  "timestamp": "2026-10-03T03:00:00Z",
+  "status": 400,
   "code": "VALIDATION_FAILED",
   "message": "Request validation failed",
-  "timestamp": "2026-09-30T01:00:00Z",
+  "path": "/api/auth/signup",
   "fieldErrors": {
     "email": "must be a well-formed email address"
   }
 }
 ```
 
-- `400`: 입력값 또는 허용되지 않은 상태 전이
-- `401`: 로그인 실패, Access Token 없음·만료·위조
+- `400`: 요청 본문·파라미터 검증 실패 또는 잘못된 업무 입력
+- `401`: 로그인 실패, Access Token 없음·만료·위조 (`AUTHENTICATION_REQUIRED`, `INVALID_ACCESS_TOKEN`)
 - `403`: 해당 현장 또는 기능에 대한 권한 없음
-- `404`: 리소스를 찾을 수 없거나 접근 가능한 범위에 없음
+- `404`: 리소스 또는 API 경로를 찾을 수 없음
+- `405`: 해당 경로에서 지원하지 않는 HTTP 메서드
 - `409`: 이메일, 참여, 공정 키 등 중복·충돌
+- `500`: 외부에 상세 원인을 공개하지 않는 서버 내부 오류
 
-프론트엔드는 화면에 `message`를 그대로 노출하기보다 `code`를 기준으로 사용자 메시지를 매핑하고, `fieldErrors`가 있으면 입력 필드 옆에 표시합니다.
+프론트엔드는 화면에 `message`를 그대로 노출하기보다 `code`를 기준으로 사용자 메시지를 매핑하고, `fieldErrors`가 있으면 입력 필드 옆에 표시합니다. 전체 공통 코드와 처리 규칙은 [API 오류 규격](ERRORS.md)을 참고하세요.
 
 ## 5. 프론트엔드 연동 체크리스트
 

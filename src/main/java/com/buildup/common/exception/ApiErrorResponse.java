@@ -1,24 +1,52 @@
 package com.buildup.common.exception;
 
+import org.springframework.http.HttpStatus;
+
 import java.time.Instant;
 import java.util.Map;
 
 public record ApiErrorResponse(
+        Instant timestamp,
+        int status,
         String code,
         String message,
-        Instant timestamp,
+        String path,
         Map<String, String> fieldErrors
 ) {
 
-    public static ApiErrorResponse of(String code, String message) {
-        return new ApiErrorResponse(code, message, Instant.now(), Map.of());
+    public ApiErrorResponse {
+        fieldErrors = fieldErrors == null ? Map.of() : Map.copyOf(fieldErrors);
     }
 
-    public static ApiErrorResponse validation(Map<String, String> fieldErrors) {
+    public static ApiErrorResponse of(
+            HttpStatus status,
+            String code,
+            String message,
+            String path
+    ) {
         return new ApiErrorResponse(
-                "VALIDATION_FAILED",
-                "Request validation failed",
                 Instant.now(),
+                status.value(),
+                code,
+                message,
+                path,
+                Map.of()
+        );
+    }
+
+    public static ApiErrorResponse validation(
+            HttpStatus status,
+            String code,
+            String message,
+            String path,
+            Map<String, String> fieldErrors
+    ) {
+        return new ApiErrorResponse(
+                Instant.now(),
+                status.value(),
+                code,
+                message,
+                path,
                 fieldErrors
         );
     }

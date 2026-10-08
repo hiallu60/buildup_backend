@@ -1,0 +1,31 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:buildup-test;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: false
+    open-in-view: false
+
+  flyway:
+    enabled: false
+
+aws:
+  region: ap-northeast-2
+  s3:
+    bucket: buildup-test-bucket
+    connection-check-enabled: false
+
+security:
+  jwt:
+    secret: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    issuer: buildup-api-test
+    access-token-ttl: 15m
+    refresh-token-ttl: 14d
+
+  cors:
+    allowed-origins: http://localhost:5173

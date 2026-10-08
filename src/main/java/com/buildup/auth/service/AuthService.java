@@ -7,6 +7,8 @@ import com.buildup.auth.jwt.JwtTokenService;
 import com.buildup.common.exception.AuthException;
 import com.buildup.user.entity.User;
 import com.buildup.user.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -16,6 +18,8 @@ import java.util.Locale;
 
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final PasswordService passwordService;
@@ -65,20 +69,22 @@ public class AuthService {
             throw invalidCredentials();
         }
 
-        return issueTokenPair(user);
+        TokenResponse response = issueTokenPair(user);
+        log.info("event=auth.login.succeeded userId={}", user.getId());
+        return response;
     }
 
     public TokenResponse refresh(String rawRefreshToken) {
-        RefreshTokenService.RotatedRefreshToken rotated =
-                refreshTokenService.rotate(rawRefreshToken);
+        RefreshTokenService.ValidatedRefreshToken validated =
+                refreshTokenService.validate(rawRefreshToken);
         JwtTokenService.AccessToken accessToken =
-                jwtTokenService.issueAccessToken(rotated.user());
+                jwtTokenService.issueAccessToken(validated.user());
 
         return TokenResponse.bearer(
                 accessToken.value(),
-                rotated.value(),
+                rawRefreshToken,
                 accessToken.expiresAt(),
-                rotated.expiresAt()
+                validated.expiresAt()
         );
     }
 

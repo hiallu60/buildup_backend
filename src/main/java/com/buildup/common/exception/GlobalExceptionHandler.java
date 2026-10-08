@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,15 @@ public class GlobalExceptionHandler {
             AuthException exception,
             HttpServletRequest request
     ) {
+        if ("INVALID_CREDENTIALS".equals(exception.getCode())) {
+            log.warn(
+                    "event=auth.login.failed reason=invalid_credentials method={} path={}",
+                    request.getMethod(),
+                    request.getRequestURI()
+            );
+        } else {
+            logRejected(request, exception.getStatus(), exception.getCode());
+        }
         return ResponseEntity
                 .status(exception.getStatus())
                 .body(ApiErrorResponse.of(
@@ -45,6 +55,7 @@ public class GlobalExceptionHandler {
             ApiException exception,
             HttpServletRequest request
     ) {
+        logRejected(request, exception.getStatus(), exception.getCode());
         return ResponseEntity
                 .status(exception.getStatus())
                 .body(ApiErrorResponse.of(
@@ -103,6 +114,7 @@ public class GlobalExceptionHandler {
             HttpMessageNotReadableException exception,
             HttpServletRequest request
     ) {
+        logRejected(request, CommonErrorCode.INVALID_REQUEST_BODY);
         return commonResponse(CommonErrorCode.INVALID_REQUEST_BODY, request);
     }
 
@@ -135,6 +147,7 @@ public class GlobalExceptionHandler {
             HttpRequestMethodNotSupportedException exception,
             HttpServletRequest request
     ) {
+        logRejected(request, CommonErrorCode.METHOD_NOT_ALLOWED);
         return commonResponse(CommonErrorCode.METHOD_NOT_ALLOWED, request);
     }
 
@@ -143,6 +156,7 @@ public class GlobalExceptionHandler {
             NoResourceFoundException exception,
             HttpServletRequest request
     ) {
+        logRejected(request, CommonErrorCode.API_NOT_FOUND);
         return commonResponse(CommonErrorCode.API_NOT_FOUND, request);
     }
 
@@ -151,7 +165,29 @@ public class GlobalExceptionHandler {
             DataIntegrityViolationException exception,
             HttpServletRequest request
     ) {
+        log.error(
+                "event=database.error code={} method={} path={} exception={}",
+                CommonErrorCode.DATA_INTEGRITY_CONFLICT.name(),
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName()
+        );
         return commonResponse(CommonErrorCode.DATA_INTEGRITY_CONFLICT, request);
+    }
+
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<ApiErrorResponse> handleDatabaseException(
+            DataAccessException exception,
+            HttpServletRequest request
+    ) {
+        log.error(
+                "event=database.error code={} method={} path={} exception={}",
+                CommonErrorCode.INTERNAL_SERVER_ERROR.name(),
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName()
+        );
+        return commonResponse(CommonErrorCode.INTERNAL_SERVER_ERROR, request);
     }
 
     @ExceptionHandler(Exception.class)
@@ -159,7 +195,14 @@ public class GlobalExceptionHandler {
             Exception exception,
             HttpServletRequest request
     ) {
-        log.error("Unhandled exception while processing {}", request.getRequestURI(), exception);
+        log.error(
+                "event=request.failed code={} method={} path={} exception={} location={}",
+                CommonErrorCode.INTERNAL_SERVER_ERROR.name(),
+                request.getMethod(),
+                request.getRequestURI(),
+                exception.getClass().getSimpleName(),
+                safeExceptionLocation(exception)
+        );
         return commonResponse(CommonErrorCode.INTERNAL_SERVER_ERROR, request);
     }
 
@@ -194,6 +237,7 @@ public class GlobalExceptionHandler {
             Map<String, String> fieldErrors
     ) {
         HttpStatus status = errorCode.status();
+        logRejected(request, status, errorCode.name());
         return ResponseEntity
                 .status(status)
                 .body(ApiErrorResponse.validation(
@@ -203,5 +247,39 @@ public class GlobalExceptionHandler {
                         request.getRequestURI(),
                         fieldErrors
                 ));
+    }
+
+    private void logRejected(
+            HttpServletRequest request,
+            CommonErrorCode errorCode
+    ) {
+        logRejected(request, errorCode.status(), errorCode.name());
+    }
+
+    private void logRejected(
+            HttpServletRequest request,
+            HttpStatus status,
+            String code
+    ) {
+        log.warn(
+                "event=request.rejected status={} code={} method={} path={}",
+                status.value(),
+                code,
+                request.getMethod(),
+                request.getRequestURI()
+        );
+    }
+
+    private String safeExceptionLocation(Exception exception) {
+        for (StackTraceElement element : exception.getStackTrace()) {
+            if (element.getClassName().startsWith("com.buildup.")) {
+                return element.getClassName()
+                        + "."
+                        + element.getMethodName()
+                        + ":"
+                        + element.getLineNumber();
+            }
+        }
+        return "unknown";
     }
 }

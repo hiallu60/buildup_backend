@@ -11,6 +11,8 @@ import com.buildup.site.entity.SiteProcess;
 import com.buildup.site.repository.SiteProcessRepository;
 import com.buildup.site.service.SiteAccessService;
 import com.buildup.user.entity.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,8 @@ import java.time.LocalDateTime;
 
 @Service
 public class ReportReviewService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReportReviewService.class);
 
     private final ReportRepository reportRepository;
     private final ReportReviewEventRepository reviewEventRepository;
@@ -72,6 +76,12 @@ public class ReportReviewService {
                 "REPORT",
                 report.getId()
         );
+        log.info(
+                "event=report.approved reportId={} siteId={} reviewerId={}",
+                report.getId(),
+                report.getSite().getId(),
+                reviewer.getId()
+        );
         return ReportReviewResponse.from(report);
     }
 
@@ -88,6 +98,12 @@ public class ReportReviewService {
                 comment.trim(),
                 "REPORT",
                 report.getId()
+        );
+        log.info(
+                "event=report.rejected reportId={} siteId={} reviewerId={}",
+                report.getId(),
+                report.getSite().getId(),
+                reviewer.getId()
         );
         return ReportReviewResponse.from(report);
     }

@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -97,6 +98,14 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void returnsGenericServerErrorWithoutLeakingDatabaseDetails() throws Exception {
+        mockMvc.perform(get("/test/database-error"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.code").value("INTERNAL_SERVER_ERROR"))
+                .andExpect(jsonPath("$.message").value("An unexpected server error occurred"));
+    }
+
+    @Test
     void returnsGenericMessageForUnexpectedException() throws Exception {
         mockMvc.perform(get("/test/unexpected"))
                 .andExpect(status().isInternalServerError())
@@ -125,6 +134,11 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/data-conflict")
         void dataConflict() {
             throw new DataIntegrityViolationException("do not expose this detail");
+        }
+
+        @GetMapping("/test/database-error")
+        void databaseError() {
+            throw new DataAccessResourceFailureException("do not expose this detail");
         }
 
         @GetMapping("/test/unexpected")

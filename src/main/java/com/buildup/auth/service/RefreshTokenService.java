@@ -47,14 +47,13 @@ public class RefreshTokenService {
     }
 
     @Transactional(noRollbackFor = AuthException.class)
-    public RotatedRefreshToken rotate(String rawToken) {
+    public ValidatedRefreshToken validate(String rawToken) {
         String tokenHash = hash(rawToken);
         LocalDateTime now = LocalDateTime.now(ZoneOffset.UTC);
         RefreshToken current = refreshTokenRepository.findByTokenHash(tokenHash)
                 .orElseThrow(this::invalidRefreshToken);
 
         if (current.isRevoked()) {
-            refreshTokenRepository.revokeAllActiveByUserId(current.getUser().getId(), now);
             throw invalidRefreshToken();
         }
 
@@ -63,12 +62,9 @@ public class RefreshTokenService {
             throw invalidRefreshToken();
         }
 
-        current.revoke(now);
-        IssuedRefreshToken replacement = issue(current.getUser());
-        return new RotatedRefreshToken(
+        return new ValidatedRefreshToken(
                 current.getUser(),
-                replacement.value(),
-                replacement.expiresAt()
+                current.getExpiresAt().toInstant(ZoneOffset.UTC)
         );
     }
 
@@ -110,6 +106,6 @@ public class RefreshTokenService {
     public record IssuedRefreshToken(String value, Instant expiresAt) {
     }
 
-    public record RotatedRefreshToken(User user, String value, Instant expiresAt) {
+    public record ValidatedRefreshToken(User user, Instant expiresAt) {
     }
 }

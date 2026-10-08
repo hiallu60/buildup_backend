@@ -19,6 +19,8 @@ import com.buildup.site.repository.SiteProcessRepository;
 import com.buildup.site.repository.SiteRepository;
 import com.buildup.site.service.SiteAccessService;
 import com.buildup.user.entity.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -29,6 +31,8 @@ import java.util.List;
 
 @Service
 public class ReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReportService.class);
 
     private final ReportRepository reportRepository;
     private final ReportReviewEventRepository reviewEventRepository;
@@ -112,6 +116,12 @@ public class ReportService {
                 files,
                 author
         ));
+        log.info(
+                "event=report.created reportId={} siteId={} authorId={}",
+                report.getId(),
+                site.getId(),
+                author.getId()
+        );
         return ReportDetailResponse.from(report, List.of());
     }
 

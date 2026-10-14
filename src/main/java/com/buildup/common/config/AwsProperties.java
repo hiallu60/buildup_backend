@@ -19,12 +19,16 @@ public record AwsProperties(
 
     public record S3(
             String bucket,
-            boolean connectionCheckEnabled
+            boolean connectionCheckEnabled,
+            long maxPhotoSizeBytes
     ) {
 
         public S3 {
             if (bucket == null || bucket.isBlank()) {
                 throw new IllegalStateException("AWS S3 bucket must be configured");
+            }
+            if (maxPhotoSizeBytes <= 0) {
+                throw new IllegalStateException("AWS S3 maximum photo size must be positive");
             }
         }
     }

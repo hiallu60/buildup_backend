@@ -43,4 +43,9 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
     @EntityGraph(attributePaths = {"site", "site.owner", "site.company", "author"})
     @Query("select report from Report report where report.id = :reportId")
     Optional<Report> findForReview(@Param("reportId") Long reportId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {"site", "site.owner", "site.company", "author"})
+    @Query("select report from Report report where report.id = :reportId")
+    Optional<Report> findForPhotoUpdate(@Param("reportId") Long reportId);
 }

@@ -18,6 +18,7 @@ import com.buildup.site.entity.SiteProcess;
 import com.buildup.site.repository.SiteProcessRepository;
 import com.buildup.site.repository.SiteRepository;
 import com.buildup.site.service.SiteAccessService;
+import com.buildup.storage.service.S3PhotoStorageService;
 import com.buildup.user.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,6 +27,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 
@@ -39,19 +42,22 @@ public class ReportService {
     private final SiteRepository siteRepository;
     private final SiteProcessRepository siteProcessRepository;
     private final SiteAccessService siteAccessService;
+    private final S3PhotoStorageService photoStorageService;
 
     public ReportService(
             ReportRepository reportRepository,
             ReportReviewEventRepository reviewEventRepository,
             SiteRepository siteRepository,
             SiteProcessRepository siteProcessRepository,
-            SiteAccessService siteAccessService
+            SiteAccessService siteAccessService,
+            S3PhotoStorageService photoStorageService
     ) {
         this.reportRepository = reportRepository;
         this.reviewEventRepository = reviewEventRepository;
         this.siteRepository = siteRepository;
         this.siteProcessRepository = siteProcessRepository;
         this.siteAccessService = siteAccessService;
+        this.photoStorageService = photoStorageService;
     }
 
     @Transactional
@@ -96,7 +102,7 @@ public class ReportService {
 
         List<ReportPhoto> photos = safeList(request.photoFileNames()).stream()
                 .map(String::trim)
-                .map(ReportPhoto::of)
+                .map(ReportPhoto::legacy)
                 .toList();
         List<ReportFile> files = safeList(request.files()).stream()
                 .map(this::toReportFile)
@@ -161,6 +167,48 @@ public class ReportService {
                 .map(ReportReviewEventResponse::from)
                 .toList();
         return ReportDetailResponse.from(report, reviewEvents);
+    }
+
+    @Transactional
+    public void delete(User user, Long reportId) {
+        Report report = reportRepository.findForPhotoUpdate(reportId)
+                .orElseThrow(this::reportNotFound);
+        boolean author = report.getAuthor().getId().equals(user.getId());
+        boolean manager = siteAccessService.canManageSite(user, report.getSite());
+        if (!author && !manager && !user.isSystemAdmin()) {
+            throw new ApiException(
+                    HttpStatus.FORBIDDEN,
+                    "REPORT_DELETE_FORBIDDEN",
+                    "보고서를 삭제할 권한이 없습니다."
+            );
+        }
+        if (!report.isPendingReview()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "REPORT_DELETE_NOT_ALLOWED",
+                    "검토가 끝난 보고서는 삭제할 수 없습니다."
+            );
+        }
+
+        List<String> s3Keys = report.getPhotos().stream()
+                .map(ReportPhoto::getS3Key)
+                .filter(key -> key != null && !key.isBlank())
+                .toList();
+        reportRepository.delete(report);
+        reportRepository.flush();
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                s3Keys.forEach(key -> photoStorageService.deleteQuietly(reportId, key));
+            }
+        });
+        log.info(
+                "event=report.deleted reportId={} siteId={} actorId={} photoCount={}",
+                reportId,
+                report.getSite().getId(),
+                user.getId(),
+                s3Keys.size()
+        );
     }
 
     private Site requireSite(Long siteId) {

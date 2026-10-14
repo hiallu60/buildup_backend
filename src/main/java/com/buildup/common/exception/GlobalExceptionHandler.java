@@ -17,6 +17,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -173,6 +174,22 @@ public class GlobalExceptionHandler {
                 exception.getClass().getSimpleName()
         );
         return commonResponse(CommonErrorCode.DATA_INTEGRITY_CONFLICT, request);
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSize(
+            MaxUploadSizeExceededException exception,
+            HttpServletRequest request
+    ) {
+        logRejected(request, HttpStatus.PAYLOAD_TOO_LARGE, "PHOTO_TOO_LARGE");
+        return ResponseEntity
+                .status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(ApiErrorResponse.of(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "PHOTO_TOO_LARGE",
+                        "사진 파일 크기가 허용 한도를 초과했습니다.",
+                        request.getRequestURI()
+                ));
     }
 
     @ExceptionHandler(DataAccessException.class)

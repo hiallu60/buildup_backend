@@ -19,6 +19,7 @@ aws:
   s3:
     bucket: buildup-test-bucket
     connection-check-enabled: false
+    max-photo-size-bytes: 10485760
 
 security:
   jwt:

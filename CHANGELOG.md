@@ -17,10 +17,16 @@
 - AWS SDK for Java 2.x 기반 S3 클라이언트와 환경변수 설정
 - IAM Role 기반 S3 버킷 연결 확인 서비스와 조건부 확인 API
 - S3 버킷 연결 요청 단위 테스트
+- 보고서 JPG/PNG 사진 업로드 API와 UUID 기반 S3 Key 생성
+- 사진 MIME·파일 시그니처·크기 제한 검증과 업로드 실패 로그
+- 보고서 사진 메타데이터 조회, 인증 기반 이미지 조회 및 개별 삭제 API
+- 검토 대기 보고서 삭제 시 DB 커밋 후 S3 사진 정리 정책
+- S3 사진 업로드·검증·삭제 단위 테스트
 
 ### Changed
 - Access Token 재발급 시 기존 Refresh Token을 유지하도록 Rotation 제거
 - 서버 로그를 `event`와 식별자 중심의 INFO·WARN·ERROR 기준으로 정리
+- `report_photos`를 S3 메타데이터를 갖는 독립 엔티티로 전환
 
 ### Fixed
 - 만료되거나 로그아웃으로 폐기된 Refresh Token의 재사용 차단을 명시적으로 검증

@@ -168,6 +168,11 @@ Content-Type: application/json
 | POST | `/api/sites/{siteId}/reports` | 보고서 작성, `VIEWER` 제외 |
 | GET | `/api/sites/{siteId}/reports` | 보고서 목록 |
 | GET | `/api/reports/{reportId}` | 보고서 상세 |
+| DELETE | `/api/reports/{reportId}` | 검토 대기 보고서 삭제, 작성자·현장 관리자만 가능 |
+| POST | `/api/reports/{reportId}/photos` | JPG/PNG 사진 multipart 업로드 |
+| GET | `/api/reports/{reportId}/photos` | 사진 메타데이터 목록 |
+| GET | `/api/reports/{reportId}/photos/{photoId}/content` | 인증 후 S3 사진 내용 조회 |
+| DELETE | `/api/reports/{reportId}/photos/{photoId}` | 검토 대기 보고서의 사진 삭제 |
 | POST | `/api/reports/{reportId}/approve` | 승인, 관리자 권한 필요 |
 | POST | `/api/reports/{reportId}/reject` | 반려, 관리자 권한 필요 |
 
@@ -195,7 +200,21 @@ Content-Type: application/json
 { "comment": "사진을 추가해 주세요." }
 ```
 
-현재 파일 API는 업로드 자체가 아니라 파일 경로·이름·크기 메타데이터를 받습니다. 실제 업로드 방식이 확정되기 전 임의의 업로드 URL을 가정하지 마세요.
+사진 업로드는 `multipart/form-data`로 요청하며 `file`은 필수입니다. `takenAt`(ISO 날짜·시간), `latitude`, `longitude`는 선택이고 위치를 보낼 때는 위도·경도를 함께 보냅니다. JPG/JPEG와 PNG만 허용하며 기본 최대 크기는 10MB입니다.
+
+```text
+POST /api/reports/{reportId}/photos
+Content-Type: multipart/form-data
+
+file=<image>
+takenAt=2026-10-09T14:30:00
+latitude=37.5665000
+longitude=126.9780000
+```
+
+DB에는 만료될 수 있는 URL 대신 `s3_key`와 파일 메타데이터를 저장합니다. 업로드·목록 응답의 `contentUrl`은 인증이 필요한 백엔드 조회 경로입니다. 기존 JSON 보고서 작성 요청의 `photoFileNames`와 일반 첨부파일 `path`는 호환용이며, 실제 S3 사진은 위 사진 API로 등록합니다.
+
+사진 추가·삭제와 보고서 삭제는 검토 대기(`PENDING`) 상태에서만 가능합니다. 보고서를 삭제하면 DB 커밋 후 연결된 S3 사진 삭제를 시도하고, S3 삭제 실패는 운영 로그에 남겨 후속 정리가 가능하도록 합니다.
 
 ### 자재 요청
 

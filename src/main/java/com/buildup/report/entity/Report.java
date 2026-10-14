@@ -4,6 +4,7 @@ import com.buildup.site.entity.Site;
 import com.buildup.user.entity.User;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,6 +15,8 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.OrderColumn;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -73,16 +76,8 @@ public class Report {
     @Column(name = "review_status", nullable = false, length = 20)
     private ReportReviewStatus reviewStatus = ReportReviewStatus.PENDING;
 
-    @ElementCollection(fetch = FetchType.LAZY)
-    @CollectionTable(
-            name = "report_photos",
-            joinColumns = @JoinColumn(name = "report_id"),
-            uniqueConstraints = @UniqueConstraint(
-                    name = "uq_report_photos_report_position",
-                    columnNames = {"report_id", "position"}
-            )
-    )
-    @OrderColumn(name = "position", nullable = false)
+    @OneToMany(mappedBy = "report", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("position ASC")
     private List<ReportPhoto> photos = new ArrayList<>();
 
     @ElementCollection(fetch = FetchType.LAZY)
@@ -128,7 +123,7 @@ public class Report {
         this.weather = weather;
         this.workers = workers;
         this.equipment = equipment;
-        this.photos.addAll(photos);
+        photos.forEach(this::addPhoto);
         this.files.addAll(files);
         this.author = author;
         this.reviewStatus = ReportReviewStatus.PENDING;
@@ -174,5 +169,17 @@ public class Report {
 
     public boolean isPendingReview() {
         return reviewStatus == ReportReviewStatus.PENDING;
+    }
+
+    public void addPhoto(ReportPhoto photo) {
+        photo.attachTo(this, photos.size());
+        photos.add(photo);
+    }
+
+    public void removePhoto(ReportPhoto photo) {
+        photos.remove(photo);
+        for (int index = 0; index < photos.size(); index++) {
+            photos.get(index).moveTo(index);
+        }
     }
 }

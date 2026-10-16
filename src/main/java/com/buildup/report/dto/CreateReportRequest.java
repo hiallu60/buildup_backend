@@ -13,7 +13,6 @@ import java.math.BigDecimal;
 import java.util.List;
 
 public record CreateReportRequest(
-        @NotBlank
         @Size(max = 50)
         String processKey,
 
@@ -39,6 +38,20 @@ public record CreateReportRequest(
         List<@NotBlank @Size(max = 255) String> photoFileNames,
 
         @Size(max = 20)
-        List<@Valid ReportFileRequest> files
+        List<@Valid ReportFileRequest> files,
+
+        @NotBlank
+        @Size(max = 500)
+        String work,
+
+        @Digits(integer = 3, fraction = 7)
+        BigDecimal submitLatitude,
+
+        @Digits(integer = 3, fraction = 7)
+        BigDecimal submitLongitude,
+
+        @DecimalMin("0.00")
+        @Digits(integer = 8, fraction = 2)
+        BigDecimal submitAccuracy
 ) {
 }

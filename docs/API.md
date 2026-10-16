@@ -128,7 +128,12 @@ Content-Type: application/json
 
 ```json
 // POST /api/sites
-{ "name": "강남 현장", "address": "서울시 강남구", "companyId": null }
+{
+  "name": "강남 현장",
+  "address": "서울시 강남구",
+  "companyId": null,
+  "progressCalculationMode": "PROCESS_WEIGHTED"
+}
 
 // POST /api/sites/join
 { "code": "JOIN-CODE" }
@@ -136,6 +141,8 @@ Content-Type: application/json
 // PATCH .../role
 { "role": "MANAGER" }
 ```
+
+`progressCalculationMode`은 `PROCESS_WEIGHTED`(공정별 가중치 계산) 또는 `MANUAL_INPUT`(보고자가 현장 전체 진행률 직접 입력)입니다. 생략하면 기존 클라이언트 호환을 위해 `PROCESS_WEIGHTED`가 적용됩니다. 현장 목록·상세 응답에는 선택한 방식과 승인 결과로 계산된 `overallProgress`가 포함됩니다.
 
 현장 역할은 `OWNER`, `MANAGER`, `WORKER`, `VIEWER`입니다. 멤버 상태는 `ACTIVE`, `INACTIVE`, `LEFT`입니다.
 
@@ -161,6 +168,8 @@ Content-Type: application/json
 
 `PUT` 요청에는 `processKey`를 제외한 `name`, `weight`, `planStart`, `planEnd`, `sortOrder`를 모두 보냅니다. 진행률은 승인된 보고서를 통해 갱신되며 이 API에서 직접 수정하지 않습니다.
 
+공정 API는 `PROCESS_WEIGHTED` 현장에서만 사용합니다. 보고서를 제출하려면 등록된 공정 가중치 합계가 100이어야 합니다.
+
 ### 보고서
 
 | Method | Path | 설명 |
@@ -177,6 +186,8 @@ Content-Type: application/json
 | POST | `/api/reports/{reportId}/reject` | 반려, 관리자 권한 필요 |
 
 목록 쿼리: `processKey`, `reviewStatus`, `page=0`, `size=20`을 사용할 수 있습니다. `size`는 1~100이며 `reviewStatus`는 `PENDING`, `APPROVED`, `REJECTED`입니다.
+
+`PROCESS_WEIGHTED` 현장의 보고서는 `processKey`가 필수이며 승인 시 해당 공정 진행률이 반영됩니다. `MANUAL_INPUT` 현장은 `processKey` 없이 `toProgress`에 현장 전체 진행률을 입력하고, 승인된 최신 값이 전체 진행률이 됩니다.
 
 ```json
 // POST /api/sites/{siteId}/reports
@@ -293,6 +304,8 @@ DB에는 만료될 수 있는 URL 대신 `s3_key`와 파일 메타데이터를 �
 - `404`: 리소스 또는 API 경로를 찾을 수 없음
 - `405`: 해당 경로에서 지원하지 않는 HTTP 메서드
 - `409`: 이메일, 참여, 공정 키 등 중복·충돌
+- `413`: 서버 전체 업로드 크기 제한 초과
+- `415`: 지원하지 않는 요청 `Content-Type`
 - `500`: 외부에 상세 원인을 공개하지 않는 서버 내부 오류
 
 프론트엔드는 화면에 `message`를 그대로 노출하기보다 `code`를 기준으로 사용자 메시지를 매핑하고, `fieldErrors`가 있으면 입력 필드 옆에 표시합니다. 전체 공통 코드와 처리 규칙은 [API 오류 규격](ERRORS.md)을 참고하세요.

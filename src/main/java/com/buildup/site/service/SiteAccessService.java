@@ -4,10 +4,13 @@ import com.buildup.company.entity.CompanyMembershipRole;
 import com.buildup.company.repository.CompanyMembershipRepository;
 import com.buildup.site.entity.MembershipStatus;
 import com.buildup.site.entity.Site;
+import com.buildup.site.entity.SiteMember;
 import com.buildup.site.repository.SiteMemberRepository;
 import com.buildup.user.entity.User;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Optional;
 
 @Service
 public class SiteAccessService {
@@ -29,12 +32,13 @@ public class SiteAccessService {
             return true;
         }
 
-        boolean siteManager = siteMemberRepository
+        Optional<SiteMember> membership = siteMemberRepository
                 .findBySiteIdAndUserIdAndStatus(
                         site.getId(),
                         user.getId(),
                         MembershipStatus.ACTIVE
-                )
+                );
+        boolean siteManager = membership
                 .map(member -> member.getMemberRole().canManageReports())
                 .orElse(false);
 
@@ -42,12 +46,13 @@ public class SiteAccessService {
             return siteManager;
         }
 
-        return companyMembershipRepository.existsByCompanyIdAndUserIdAndRoleAndStatus(
-                site.getCompany().getId(),
-                user.getId(),
-                CompanyMembershipRole.HQ_MANAGER,
-                MembershipStatus.ACTIVE
-        );
+        return membership.isPresent()
+                && companyMembershipRepository.existsByCompanyIdAndUserIdAndRoleAndStatus(
+                        site.getCompany().getId(),
+                        user.getId(),
+                        CompanyMembershipRole.HQ_MANAGER,
+                        MembershipStatus.ACTIVE
+                );
     }
 
     @Transactional(readOnly = true)
@@ -103,15 +108,16 @@ public class SiteAccessService {
             return true;
         }
 
-        boolean siteManager = siteMemberRepository
+        Optional<SiteMember> membership = siteMemberRepository
                 .findBySiteIdAndUserIdAndStatus(
                         site.getId(),
                         user.getId(),
                         MembershipStatus.ACTIVE
-                )
+                );
+        boolean siteManager = membership
                 .map(member -> member.getMemberRole().canManageReports())
                 .orElse(false);
-        return siteManager || isHqManager(user, site);
+        return siteManager || (membership.isPresent() && isHqManager(user, site));
     }
 
     @Transactional(readOnly = true)

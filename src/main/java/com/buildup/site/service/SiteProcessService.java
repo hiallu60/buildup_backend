@@ -5,6 +5,7 @@ import com.buildup.site.dto.CreateSiteProcessRequest;
 import com.buildup.site.dto.SiteProcessResponse;
 import com.buildup.site.dto.UpdateSiteProcessRequest;
 import com.buildup.site.entity.MembershipStatus;
+import com.buildup.site.entity.ProgressCalculationMode;
 import com.buildup.site.entity.Site;
 import com.buildup.site.entity.SiteProcess;
 import com.buildup.site.repository.SiteMemberRepository;
@@ -55,6 +56,7 @@ public class SiteProcessService {
             CreateSiteProcessRequest request
     ) {
         Site site = requireManageableSite(user, siteId);
+        requireWeightedMode(site);
         validatePlanPeriod(request.planStart(), request.planEnd());
 
         String processKey = request.processKey().trim();
@@ -90,7 +92,8 @@ public class SiteProcessService {
             Long processId,
             UpdateSiteProcessRequest request
     ) {
-        requireManageableSite(user, siteId);
+        Site site = requireManageableSite(user, siteId);
+        requireWeightedMode(site);
         validatePlanPeriod(request.planStart(), request.planEnd());
 
         SiteProcess process = siteProcessRepository.findByIdAndSiteId(processId, siteId)
@@ -144,6 +147,16 @@ public class SiteProcessService {
                     HttpStatus.BAD_REQUEST,
                     "INVALID_PROCESS_PLAN_PERIOD",
                     "공정 종료 예정일은 시작 예정일보다 빠를 수 없습니다."
+            );
+        }
+    }
+
+    private void requireWeightedMode(Site site) {
+        if (site.getProgressCalculationMode() != ProgressCalculationMode.PROCESS_WEIGHTED) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "SITE_PROCESS_NOT_ALLOWED",
+                    "직접 입력 방식의 현장에는 공정을 등록하거나 수정할 수 없습니다."
             );
         }
     }

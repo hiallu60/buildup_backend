@@ -79,6 +79,7 @@ public class S3PhotoStorageService {
     }
 
     public DownloadedPhoto download(Long reportId, String s3Key, String contentType) {
+        requireExpectedKey(reportId, s3Key);
         try {
             ResponseBytes<GetObjectResponse> response = s3Client.getObjectAsBytes(
                     GetObjectRequest.builder()
@@ -115,6 +116,10 @@ public class S3PhotoStorageService {
 
     public void deleteQuietly(Long reportId, String s3Key) {
         if (s3Key == null || s3Key.isBlank()) {
+            return;
+        }
+        if (!hasExpectedKey(reportId, s3Key)) {
+            log.warn("event=s3.photo.delete.skipped reason=invalid_key reportId={} key={}", reportId, s3Key);
             return;
         }
         try {
@@ -196,7 +201,25 @@ public class S3PhotoStorageService {
         if (name.isBlank()) {
             name = "photo." + extension(contentType);
         }
+        name = name.replaceAll("[\\p{Cntrl}]", "_");
         return name.length() <= 255 ? name : name.substring(name.length() - 255);
+    }
+
+    private void requireExpectedKey(Long reportId, String s3Key) {
+        if (!hasExpectedKey(reportId, s3Key)) {
+            log.warn("event=s3.photo.download.denied reason=invalid_key reportId={} key={}", reportId, s3Key);
+            throw new ApiException(
+                    HttpStatus.NOT_FOUND,
+                    "REPORT_PHOTO_CONTENT_NOT_FOUND",
+                    "사진 파일을 찾을 수 없습니다."
+            );
+        }
+    }
+
+    private boolean hasExpectedKey(Long reportId, String s3Key) {
+        return reportId != null
+                && s3Key != null
+                && s3Key.startsWith("reports/" + reportId + "/photos/");
     }
 
     private String extension(String contentType) {

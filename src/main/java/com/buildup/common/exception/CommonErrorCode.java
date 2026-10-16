@@ -8,6 +8,8 @@ public enum CommonErrorCode {
     INVALID_REQUEST_BODY(HttpStatus.BAD_REQUEST, "Request body is malformed or unreadable"),
     INVALID_PARAMETER(HttpStatus.BAD_REQUEST, "Request parameter is invalid"),
     MISSING_PARAMETER(HttpStatus.BAD_REQUEST, "Required request parameter is missing"),
+    UPLOAD_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "Uploaded file exceeds the allowed size"),
+    UNSUPPORTED_MEDIA_TYPE(HttpStatus.UNSUPPORTED_MEDIA_TYPE, "Content type is not supported"),
     AUTHENTICATION_REQUIRED(HttpStatus.UNAUTHORIZED, "Authentication is required"),
     INVALID_ACCESS_TOKEN(HttpStatus.UNAUTHORIZED, "Access token is invalid or expired"),
     ACCESS_DENIED(HttpStatus.FORBIDDEN, "You do not have permission to access this resource"),

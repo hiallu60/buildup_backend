@@ -9,6 +9,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -18,6 +19,8 @@ import org.springframework.web.method.annotation.HandlerMethodValidationExceptio
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -143,6 +146,36 @@ public class GlobalExceptionHandler {
         );
     }
 
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMissingRequestPart(
+            MissingServletRequestPartException exception,
+            HttpServletRequest request
+    ) {
+        return commonValidationResponse(
+                CommonErrorCode.MISSING_PARAMETER,
+                request,
+                Map.of(exception.getRequestPartName(), "Required multipart field is missing")
+        );
+    }
+
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<ApiErrorResponse> handleMultipartException(
+            MultipartException exception,
+            HttpServletRequest request
+    ) {
+        logRejected(request, CommonErrorCode.INVALID_REQUEST_BODY);
+        return commonResponse(CommonErrorCode.INVALID_REQUEST_BODY, request);
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ApiErrorResponse> handleUnsupportedMediaType(
+            HttpMediaTypeNotSupportedException exception,
+            HttpServletRequest request
+    ) {
+        logRejected(request, CommonErrorCode.UNSUPPORTED_MEDIA_TYPE);
+        return commonResponse(CommonErrorCode.UNSUPPORTED_MEDIA_TYPE, request);
+    }
+
     @ExceptionHandler(HttpRequestMethodNotSupportedException.class)
     public ResponseEntity<ApiErrorResponse> handleMethodNotAllowed(
             HttpRequestMethodNotSupportedException exception,
@@ -181,15 +214,8 @@ public class GlobalExceptionHandler {
             MaxUploadSizeExceededException exception,
             HttpServletRequest request
     ) {
-        logRejected(request, HttpStatus.PAYLOAD_TOO_LARGE, "PHOTO_TOO_LARGE");
-        return ResponseEntity
-                .status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(ApiErrorResponse.of(
-                        HttpStatus.PAYLOAD_TOO_LARGE,
-                        "PHOTO_TOO_LARGE",
-                        "사진 파일 크기가 허용 한도를 초과했습니다.",
-                        request.getRequestURI()
-                ));
+        logRejected(request, CommonErrorCode.UPLOAD_TOO_LARGE);
+        return commonResponse(CommonErrorCode.UPLOAD_TOO_LARGE, request);
     }
 
     @ExceptionHandler(DataAccessException.class)

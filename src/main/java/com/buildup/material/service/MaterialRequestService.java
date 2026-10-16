@@ -72,14 +72,23 @@ public class MaterialRequestService {
                     "필요 일자는 오늘보다 이전일 수 없습니다."
             );
         }
+        if (request.items() == null || request.items().isEmpty()) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "MATERIAL_ITEMS_REQUIRED",
+                    "자재 요청에는 품목이 하나 이상 필요합니다."
+            );
+        }
 
-        String processKey = request.processKey().trim();
-        SiteProcess process = siteProcessRepository.findForRead(siteId, processKey)
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND,
-                        "SITE_PROCESS_NOT_FOUND",
-                        "현장 공정을 찾을 수 없습니다."
-                ));
+        String processKey = normalize(request.processKey());
+        SiteProcess process = processKey == null
+                ? null
+                : siteProcessRepository.findForRead(siteId, processKey)
+                        .orElseThrow(() -> new ApiException(
+                                HttpStatus.NOT_FOUND,
+                                "SITE_PROCESS_NOT_FOUND",
+                                "현장 공정을 찾을 수 없습니다."
+                        ));
         List<MaterialRequestItem> items = request.items().stream()
                 .map(this::toItem)
                 .toList();
@@ -87,8 +96,8 @@ public class MaterialRequestService {
         MaterialRequest materialRequest = materialRequestRepository.saveAndFlush(
                 MaterialRequest.submit(
                         site,
-                        process.getProcessKey(),
-                        process.getName(),
+                        process == null ? null : process.getProcessKey(),
+                        process == null ? null : process.getName(),
                         request.neededBy(),
                         request.urgent(),
                         normalize(request.note()),
@@ -151,6 +160,14 @@ public class MaterialRequestService {
             );
         }
 
+        if (!request.hasConsistentStatusHistory()) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "MATERIAL_STATUS_HISTORY_INCONSISTENT",
+                    "자재 요청의 현재 상태와 마지막 처리 이력이 일치하지 않습니다."
+            );
+        }
+
         validateTransition(request, command);
         String rejectReason = normalize(command.rejectReason());
         boolean byHq = siteAccessService.isHqManager(actor, request.getSite());
@@ -166,7 +183,7 @@ public class MaterialRequestService {
                 request.getSite(),
                 "MATERIAL_REQUEST_" + command.status().name(),
                 statusTitle(command.status()),
-                request.getSite().getName() + " · " + request.getProcessName(),
+                request.getSite().getName() + " · " + requestDisplayName(request),
                 "MATERIAL_REQUEST",
                 request.getId()
         );
@@ -237,6 +254,12 @@ public class MaterialRequestService {
             case ORDERED -> "자재 주문이 완료되었습니다";
             case DELIVERED -> "자재 배송이 완료되었습니다";
         };
+    }
+
+    private String requestDisplayName(MaterialRequest request) {
+        return request.getProcessName() == null
+                ? "현장 공통"
+                : request.getProcessName();
     }
 
     private ApiException requestNotFound() {

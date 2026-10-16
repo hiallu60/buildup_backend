@@ -13,7 +13,7 @@ public record MaterialRequestEventResponse(
 ) {
     public static MaterialRequestEventResponse from(MaterialRequestEvent event) {
         return new MaterialRequestEventResponse(
-                event.getStatus(),
+                event.getStatus().name(),
                 event.getActor(),
                 event.getActorUser() == null ? null : event.getActorUser().getId(),
                 event.isByHq(),

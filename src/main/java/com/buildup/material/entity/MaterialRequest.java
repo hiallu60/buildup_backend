@@ -41,10 +41,10 @@ public class MaterialRequest {
     @JoinColumn(name = "site_id", nullable = false)
     private Site site;
 
-    @Column(name = "process_key", nullable = false, length = 50)
+    @Column(name = "process_key", length = 50)
     private String processKey;
 
-    @Column(name = "process_name", nullable = false, length = 100)
+    @Column(name = "process_name", length = 100)
     private String processName;
 
     @Column(name = "needed_by")
@@ -107,6 +107,9 @@ public class MaterialRequest {
             boolean requestedByHq,
             LocalDateTime requestedAt
     ) {
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("Material request must contain at least one item");
+        }
         this.site = site;
         this.processKey = processKey;
         this.processName = processName;
@@ -162,5 +165,13 @@ public class MaterialRequest {
                 ? rejectReason
                 : null;
         this.events.add(new MaterialRequestEvent(nextStatus, actor, byHq, changedAt));
+    }
+
+    public boolean hasConsistentStatusHistory() {
+        if (events.isEmpty()) {
+            return false;
+        }
+        MaterialRequestEvent latestEvent = events.get(events.size() - 1);
+        return latestEvent.getStatus() == status;
     }
 }

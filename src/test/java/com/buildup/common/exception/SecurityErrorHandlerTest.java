@@ -84,7 +84,9 @@ class SecurityErrorHandlerTest {
     ) throws Exception {
         JsonNode body = objectMapper.readTree(response.getContentAsByteArray());
         assertThat(response.getContentType()).startsWith("application/json");
+        assertThat(body.get("status").asInt()).isEqualTo(response.getStatus());
         assertThat(body.get("code").asText()).isEqualTo(code);
+        assertThat(body.get("message").asText()).isNotBlank();
         assertThat(body.get("path").asText()).isEqualTo(path);
         assertThat(body.get("timestamp")).isNotNull();
         assertThat(body.get("fieldErrors").isObject()).isTrue();

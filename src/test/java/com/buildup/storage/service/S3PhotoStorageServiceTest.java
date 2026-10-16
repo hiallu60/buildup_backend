@@ -99,10 +99,55 @@ class S3PhotoStorageServiceTest {
         assertThat(captured.get().key()).isEqualTo("reports/9/photos/photo.jpg");
     }
 
+    @Test
+    void rejectsKeyThatBelongsToAnotherReportBeforeDownload() {
+        S3PhotoStorageService service = service(
+                fakeS3Client(new AtomicReference<>(), new AtomicReference<>()),
+                1024
+        );
+
+        assertThatThrownBy(() -> service.download(
+                9L,
+                "reports/10/photos/photo.jpg",
+                "image/jpeg"
+        ))
+                .isInstanceOf(ApiException.class)
+                .extracting(exception -> ((ApiException) exception).getCode())
+                .isEqualTo("REPORT_PHOTO_CONTENT_NOT_FOUND");
+    }
+
+    @Test
+    void skipsDeletionWhenKeyBelongsToAnotherReport() {
+        AtomicReference<DeleteObjectRequest> captured = new AtomicReference<>();
+        S3PhotoStorageService service = service(fakeS3Client(new AtomicReference<>(), captured), 1024);
+
+        service.deleteQuietly(9L, "reports/10/photos/photo.jpg");
+
+        assertThat(captured.get()).isNull();
+    }
+
+    @Test
+    void removesClientPathAndControlCharactersFromOriginalName() {
+        S3PhotoStorageService service = service(
+                fakeS3Client(new AtomicReference<>(), new AtomicReference<>()),
+                1024
+        );
+        MockMultipartFile file = new MockMultipartFile(
+                "file",
+                "C:\\fakepath\\현장\r사진.jpg",
+                "image/jpeg",
+                new byte[]{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, 0x01}
+        );
+
+        var stored = service.upload(15L, file);
+
+        assertThat(stored.originalName()).isEqualTo("현장_사진.jpg");
+    }
+
     private S3PhotoStorageService service(S3Client s3Client, long maxPhotoSizeBytes) {
         AwsProperties properties = new AwsProperties(
                 "ap-northeast-2",
-                new AwsProperties.S3("buildup-test-bucket", false, maxPhotoSizeBytes)
+                new AwsProperties.S3("buildup-test-bucket", false, maxPhotoSizeBytes, 20 * 1024 * 1024)
         );
         return new S3PhotoStorageService(s3Client, properties);
     }

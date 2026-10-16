@@ -20,7 +20,8 @@ public record AwsProperties(
     public record S3(
             String bucket,
             boolean connectionCheckEnabled,
-            long maxPhotoSizeBytes
+            long maxPhotoSizeBytes,
+            long maxFileSizeBytes
     ) {
 
         public S3 {
@@ -29,6 +30,9 @@ public record AwsProperties(
             }
             if (maxPhotoSizeBytes <= 0) {
                 throw new IllegalStateException("AWS S3 maximum photo size must be positive");
+            }
+            if (maxFileSizeBytes <= 0) {
+                throw new IllegalStateException("AWS S3 maximum file size must be positive");
             }
         }
     }

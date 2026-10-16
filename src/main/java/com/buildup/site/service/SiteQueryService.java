@@ -20,13 +20,16 @@ public class SiteQueryService {
 
     private final SiteMemberRepository siteMemberRepository;
     private final SiteProcessRepository siteProcessRepository;
+    private final SiteProgressService siteProgressService;
 
     public SiteQueryService(
             SiteMemberRepository siteMemberRepository,
-            SiteProcessRepository siteProcessRepository
+            SiteProcessRepository siteProcessRepository,
+            SiteProgressService siteProgressService
     ) {
         this.siteMemberRepository = siteMemberRepository;
         this.siteProcessRepository = siteProcessRepository;
+        this.siteProgressService = siteProgressService;
     }
 
     @Transactional(readOnly = true)
@@ -34,7 +37,10 @@ public class SiteQueryService {
         return siteMemberRepository
                 .findAllAccessibleSites(user.getId(), MembershipStatus.ACTIVE)
                 .stream()
-                .map(SiteSummaryResponse::from)
+                .map(membership -> SiteSummaryResponse.from(
+                        membership,
+                        siteProgressService.currentProgress(membership.getSite())
+                ))
                 .toList();
     }
 
@@ -58,6 +64,10 @@ public class SiteQueryService {
                 .map(SiteProcessResponse::from)
                 .toList();
 
-        return SiteDetailResponse.from(membership, processes);
+        return SiteDetailResponse.from(
+                membership,
+                processes,
+                siteProgressService.currentProgress(membership.getSite())
+        );
     }
 }

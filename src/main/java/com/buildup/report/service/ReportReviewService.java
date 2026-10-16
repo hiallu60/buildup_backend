@@ -8,8 +8,10 @@ import com.buildup.report.entity.ReportReviewEvent;
 import com.buildup.report.repository.ReportRepository;
 import com.buildup.report.repository.ReportReviewEventRepository;
 import com.buildup.site.entity.SiteProcess;
+import com.buildup.site.entity.ProgressCalculationMode;
 import com.buildup.site.repository.SiteProcessRepository;
 import com.buildup.site.service.SiteAccessService;
+import com.buildup.site.service.SiteProgressService;
 import com.buildup.user.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +19,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Service
@@ -29,42 +32,56 @@ public class ReportReviewService {
     private final SiteProcessRepository siteProcessRepository;
     private final SiteAccessService siteAccessService;
     private final NotificationService notificationService;
+    private final SiteProgressService siteProgressService;
 
     public ReportReviewService(
             ReportRepository reportRepository,
             ReportReviewEventRepository reviewEventRepository,
             SiteProcessRepository siteProcessRepository,
             SiteAccessService siteAccessService,
-            NotificationService notificationService
+            NotificationService notificationService,
+            SiteProgressService siteProgressService
     ) {
         this.reportRepository = reportRepository;
         this.reviewEventRepository = reviewEventRepository;
         this.siteProcessRepository = siteProcessRepository;
         this.siteAccessService = siteAccessService;
         this.notificationService = notificationService;
+        this.siteProgressService = siteProgressService;
     }
 
     @Transactional
     public ReportReviewResponse approve(User reviewer, Long reportId, String comment) {
         Report report = pendingReport(reviewer, reportId);
-        SiteProcess process = siteProcessRepository
-                .findBySiteIdAndProcessKey(report.getSite().getId(), report.getProcessKey())
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.CONFLICT,
-                        "REPORT_PROCESS_NOT_FOUND",
-                        "보고서의 대상 공정이 더 이상 존재하지 않습니다."
-                ));
+        validateProgressMode(report);
+        SiteProcess process = report.getProcessKey() == null
+                ? null
+                : siteProcessRepository
+                        .findBySiteIdAndProcessKey(report.getSite().getId(), report.getProcessKey())
+                        .orElseThrow(() -> new ApiException(
+                                HttpStatus.CONFLICT,
+                                "REPORT_PROCESS_NOT_FOUND",
+                                "보고서의 대상 공정이 더 이상 존재하지 않습니다."
+                        ));
+        if (report.getSite().getProgressCalculationMode() == ProgressCalculationMode.PROCESS_WEIGHTED) {
+            siteProgressService.validateCompleteWeights(report.getSite());
+        }
+        BigDecimal currentProgress = process == null
+                ? siteProgressService.currentProgress(report.getSite())
+                : process.getProgress();
 
-        if (process.getProgress().compareTo(report.getFromProgress()) != 0) {
+        if (currentProgress.compareTo(report.getFromProgress()) != 0) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "STALE_REPORT_PROGRESS",
-                    "보고서 작성 후 공정 진행률이 변경되었습니다."
+                    "보고서 작성 후 기준 진행률이 변경되었습니다."
             );
         }
 
         LocalDateTime now = LocalDateTime.now();
-        process.applyApprovedProgress(report.getToProgress(), now);
+        if (process != null) {
+            process.applyApprovedProgress(report.getToProgress(), now);
+        }
         report.approve();
         reviewEventRepository.save(ReportReviewEvent.approved(report, reviewer, comment));
         notificationService.create(
@@ -72,7 +89,7 @@ public class ReportReviewService {
                 report.getSite(),
                 "REPORT_APPROVED",
                 "보고서가 승인되었습니다",
-                report.getSite().getName() + " · " + report.getProcessName(),
+                report.getSite().getName() + " · " + reportDisplayName(report),
                 "REPORT",
                 report.getId()
         );
@@ -131,5 +148,24 @@ public class ReportReviewService {
             );
         }
         return report;
+    }
+
+    private void validateProgressMode(Report report) {
+        boolean weighted = report.getSite().getProgressCalculationMode()
+                == ProgressCalculationMode.PROCESS_WEIGHTED;
+        if ((weighted && report.getProcessKey() == null)
+                || (!weighted && report.getProcessKey() != null)) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "REPORT_PROGRESS_MODE_MISMATCH",
+                    "보고서와 현장의 진행률 방식이 일치하지 않습니다."
+            );
+        }
+    }
+
+    private String reportDisplayName(Report report) {
+        return report.getProcessName() == null
+                ? report.getWork()
+                : report.getProcessName();
     }
 }

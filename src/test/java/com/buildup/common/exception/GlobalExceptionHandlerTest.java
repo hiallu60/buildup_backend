@@ -8,6 +8,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -15,8 +16,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartFile;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -83,6 +87,36 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
+    void returnsMissingParameterForRequiredMultipartField() throws Exception {
+        mockMvc.perform(multipart("/test/upload"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MISSING_PARAMETER"))
+                .andExpect(jsonPath("$.path").value("/test/upload"))
+                .andExpect(jsonPath("$.fieldErrors.file")
+                        .value("Required multipart field is missing"));
+    }
+
+    @Test
+    void returnsUnsupportedMediaTypeForWrongContentType() throws Exception {
+        mockMvc.perform(post("/test/validation")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("name=test"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_MEDIA_TYPE"))
+                .andExpect(jsonPath("$.path").value("/test/validation"))
+                .andExpect(jsonPath("$.fieldErrors").isMap());
+    }
+
+    @Test
+    void returnsGenericUploadLimitError() throws Exception {
+        mockMvc.perform(get("/test/upload-too-large"))
+                .andExpect(status().isPayloadTooLarge())
+                .andExpect(jsonPath("$.code").value("UPLOAD_TOO_LARGE"))
+                .andExpect(jsonPath("$.path").value("/test/upload-too-large"))
+                .andExpect(jsonPath("$.fieldErrors").isMap());
+    }
+
+    @Test
     void returnsMethodNotAllowedForUnsupportedMethod() throws Exception {
         mockMvc.perform(post("/test/number"))
                 .andExpect(status().isMethodNotAllowed())
@@ -144,6 +178,16 @@ class GlobalExceptionHandlerTest {
         @GetMapping("/test/unexpected")
         void unexpected() {
             throw new IllegalStateException("do not expose this detail");
+        }
+
+        @PostMapping(value = "/test/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+        String upload(@RequestPart("file") MultipartFile file) {
+            return file.getOriginalFilename();
+        }
+
+        @GetMapping("/test/upload-too-large")
+        void uploadTooLarge() {
+            throw new MaxUploadSizeExceededException(1L);
         }
     }
 

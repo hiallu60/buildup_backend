@@ -11,6 +11,7 @@ import com.buildup.site.dto.SiteMemberResponse;
 import com.buildup.site.dto.SiteSummaryResponse;
 import com.buildup.site.dto.SiteProcessResponse;
 import com.buildup.site.dto.UpdateSiteProcessRequest;
+import com.buildup.site.dto.UpdateSiteRequest;
 import com.buildup.site.service.SiteManagementService;
 import com.buildup.site.service.SiteProcessService;
 import com.buildup.site.service.SiteQueryService;
@@ -83,6 +84,15 @@ public class SiteController {
     ) {
         User user = currentUserService.require(jwt);
         return siteQueryService.detail(user, siteId);
+    }
+
+    @PutMapping("/{siteId}")
+    public SiteCreatedResponse update(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long siteId,
+            @Valid @RequestBody UpdateSiteRequest request
+    ) {
+        return siteManagementService.update(currentUserService.require(jwt), siteId, request);
     }
 
     @GetMapping("/{siteId}/members")

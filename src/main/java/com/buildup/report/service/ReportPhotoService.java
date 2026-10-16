@@ -29,15 +29,18 @@ public class ReportPhotoService {
     private final ReportRepository reportRepository;
     private final SiteAccessService siteAccessService;
     private final S3PhotoStorageService storageService;
+    private final ReportCheckService reportCheckService;
 
     public ReportPhotoService(
             ReportRepository reportRepository,
             SiteAccessService siteAccessService,
-            S3PhotoStorageService storageService
+            S3PhotoStorageService storageService,
+            ReportCheckService reportCheckService
     ) {
         this.reportRepository = reportRepository;
         this.siteAccessService = siteAccessService;
         this.storageService = storageService;
+        this.reportCheckService = reportCheckService;
     }
 
     @Transactional
@@ -73,6 +76,11 @@ public class ReportPhotoService {
                 longitude
         );
         report.addPhoto(photo);
+        reportCheckService.addPhotoChecks(
+                report,
+                photo,
+                LocalDateTime.now()
+        );
         reportRepository.flush();
         return ReportPhotoResponse.from(photo);
     }
@@ -104,7 +112,7 @@ public class ReportPhotoService {
         return new PhotoContent(
                 downloaded.content(),
                 downloaded.contentType(),
-                photo.getOriginalName() == null ? photo.getFileName() : photo.getOriginalName()
+                photo.getOriginalName()
         );
     }
 
@@ -115,7 +123,6 @@ public class ReportPhotoService {
         ReportPhoto photo = requirePhoto(report, photoId);
         String s3Key = photo.getS3Key();
         report.removePhoto(photo);
-        reportRepository.flush();
         registerAfterCommitCleanup(reportId, s3Key);
     }
 

@@ -9,7 +9,9 @@ import com.buildup.site.dto.SiteCreatedResponse;
 import com.buildup.site.dto.SiteJoinCodeResponse;
 import com.buildup.site.dto.SiteMemberResponse;
 import com.buildup.site.dto.SiteSummaryResponse;
+import com.buildup.site.dto.UpdateSiteRequest;
 import com.buildup.site.entity.MembershipStatus;
+import com.buildup.site.entity.ProgressCalculationMode;
 import com.buildup.site.entity.Site;
 import com.buildup.site.entity.SiteMember;
 import com.buildup.site.entity.SiteMemberRole;
@@ -21,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
+import java.math.BigDecimal;
 import java.util.List;
 
 @Service
@@ -35,31 +38,57 @@ public class SiteManagementService {
     private final SiteMemberRepository siteMemberRepository;
     private final CompanyRepository companyRepository;
     private final CompanyMembershipRepository companyMembershipRepository;
+    private final SiteProgressService siteProgressService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public SiteManagementService(
             SiteRepository siteRepository,
             SiteMemberRepository siteMemberRepository,
             CompanyRepository companyRepository,
-            CompanyMembershipRepository companyMembershipRepository
+            CompanyMembershipRepository companyMembershipRepository,
+            SiteProgressService siteProgressService
     ) {
         this.siteRepository = siteRepository;
         this.siteMemberRepository = siteMemberRepository;
         this.companyRepository = companyRepository;
         this.companyMembershipRepository = companyMembershipRepository;
+        this.siteProgressService = siteProgressService;
     }
 
     @Transactional
     public SiteCreatedResponse create(User owner, CreateSiteRequest request) {
         Company company = resolveCompany(owner, request.companyId());
+        validateLocation(request.latitude(), request.longitude());
         Site site = siteRepository.save(Site.create(
                 request.name().trim(),
                 request.address().trim(),
+                normalize(request.workType()),
                 owner,
                 generateUniqueCode(),
-                company
+                company,
+                request.latitude(),
+                request.longitude(),
+                request.progressCalculationMode() == null
+                        ? ProgressCalculationMode.PROCESS_WEIGHTED
+                        : request.progressCalculationMode()
         ));
-        siteMemberRepository.save(SiteMember.join(site, owner, SiteMemberRole.OWNER));
+        siteMemberRepository.saveAndFlush(SiteMember.join(site, owner, SiteMemberRole.OWNER));
+        validateOwnerMembership(site);
+        return SiteCreatedResponse.from(site);
+    }
+
+    @Transactional
+    public SiteCreatedResponse update(User requester, Long siteId, UpdateSiteRequest request) {
+        Site site = requireSite(siteId);
+        requireOwner(requester, site);
+        validateLocation(request.latitude(), request.longitude());
+        site.updateDetails(
+                request.name().trim(),
+                request.address().trim(),
+                normalize(request.workType()),
+                request.latitude(),
+                request.longitude()
+        );
         return SiteCreatedResponse.from(site);
     }
 
@@ -68,6 +97,7 @@ public class SiteManagementService {
         String code = rawCode.trim().toUpperCase();
         Site site = siteRepository.findByCode(code)
                 .orElseThrow(() -> notFound("JOIN_CODE_NOT_FOUND", "유효하지 않은 현장 코드입니다."));
+        validateOwnerMembership(site);
 
         SiteMember membership = siteMemberRepository
                 .findBySiteIdAndUserId(site.getId(), user.getId())
@@ -77,7 +107,7 @@ public class SiteManagementService {
         if (membership.getId() == null) {
             siteMemberRepository.save(membership);
         }
-        return SiteSummaryResponse.from(membership);
+        return SiteSummaryResponse.from(membership, siteProgressService.currentProgress(site));
     }
 
     @Transactional(readOnly = true)
@@ -158,6 +188,30 @@ public class SiteManagementService {
         return company;
     }
 
+    private void validateLocation(BigDecimal latitude, BigDecimal longitude) {
+        if ((latitude == null) != (longitude == null)) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "SITE_LOCATION_INCOMPLETE",
+                    "현장 위치는 위도와 경도를 함께 입력해야 합니다."
+            );
+        }
+        if (latitude != null
+                && (latitude.compareTo(BigDecimal.valueOf(-90)) < 0
+                || latitude.compareTo(BigDecimal.valueOf(90)) > 0)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SITE_LATITUDE_INVALID", "현장 위도가 올바르지 않습니다.");
+        }
+        if (longitude != null
+                && (longitude.compareTo(BigDecimal.valueOf(-180)) < 0
+                || longitude.compareTo(BigDecimal.valueOf(180)) > 0)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "SITE_LONGITUDE_INVALID", "현장 경도가 올바르지 않습니다.");
+        }
+    }
+
+    private String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     private SiteMember reactivate(SiteMember membership) {
         if (membership.isActive()) {
             throw new ApiException(
@@ -184,10 +238,29 @@ public class SiteManagementService {
     }
 
     private void requireOwner(User requester, Site site) {
+        validateOwnerMembership(site);
         if (requester.isSystemAdmin() || site.getOwner().getId().equals(requester.getId())) {
             return;
         }
         throw forbidden("SITE_OWNER_REQUIRED", "현장 소유자 권한이 필요합니다.");
+    }
+
+    private void validateOwnerMembership(Site site) {
+        List<SiteMember> ownerMemberships = siteMemberRepository.findAllBySiteIdAndMemberRole(
+                site.getId(),
+                SiteMemberRole.OWNER
+        );
+        boolean consistent = ownerMemberships.size() == 1
+                && ownerMemberships.get(0).isActive()
+                && ownerMemberships.get(0).getUser().getId().equals(site.getOwner().getId());
+
+        if (!consistent) {
+            throw new ApiException(
+                    HttpStatus.CONFLICT,
+                    "SITE_OWNER_MEMBERSHIP_INCONSISTENT",
+                    "현장 소유자와 소유자 멤버십 정보가 일치하지 않습니다."
+            );
+        }
     }
 
     private String generateUniqueCode() {

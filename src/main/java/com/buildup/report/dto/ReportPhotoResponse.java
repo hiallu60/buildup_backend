@@ -25,7 +25,7 @@ public record ReportPhotoResponse(
                 : null;
         return new ReportPhotoResponse(
                 photo.getId(),
-                photo.getOriginalName() == null ? photo.getFileName() : photo.getOriginalName(),
+                photo.getOriginalName(),
                 photo.getContentType(),
                 photo.getSizeBytes(),
                 photo.getTakenAt(),

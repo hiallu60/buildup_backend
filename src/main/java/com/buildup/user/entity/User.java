@@ -1,14 +1,10 @@
 package com.buildup.user.entity;
 
-import com.buildup.company.entity.Company;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.JoinColumn;
-import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -41,17 +37,6 @@ public class User {
 
     @Column(nullable = false, length = 30)
     private String role;
-
-    @Column(length = 100)
-    private String company;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "hq_company_id")
-    private Company hqCompany;
-
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "manager_company_id")
-    private Company managerCompany;
 
     @Column(name = "password_hash", nullable = false, length = 255)
     private String passwordHash;

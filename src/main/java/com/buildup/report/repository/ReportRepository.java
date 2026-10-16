@@ -20,6 +20,16 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
             com.buildup.report.entity.ReportReviewStatus reviewStatus
     );
 
+    boolean existsBySiteIdAndProcessKeyIsNullAndReviewStatus(
+            Long siteId,
+            com.buildup.report.entity.ReportReviewStatus reviewStatus
+    );
+
+    Optional<Report> findFirstBySiteIdAndProcessKeyIsNullAndReviewStatusOrderByCreatedAtDescIdDesc(
+            Long siteId,
+            com.buildup.report.entity.ReportReviewStatus reviewStatus
+    );
+
     @EntityGraph(attributePaths = {"author"})
     @Query("""
             select report
@@ -48,4 +58,9 @@ public interface ReportRepository extends JpaRepository<Report, Long> {
     @EntityGraph(attributePaths = {"site", "site.owner", "site.company", "author"})
     @Query("select report from Report report where report.id = :reportId")
     Optional<Report> findForPhotoUpdate(@Param("reportId") Long reportId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @EntityGraph(attributePaths = {"site", "site.owner", "site.company", "author"})
+    @Query("select report from Report report where report.id = :reportId")
+    Optional<Report> findForFileUpdate(@Param("reportId") Long reportId);
 }

@@ -30,6 +30,9 @@ public class PasswordService {
                 || passwordHash == null || passwordHash.isBlank()) {
             return false;
         }
+        if (rawPassword.getBytes(StandardCharsets.UTF_8).length > 72) {
+            return false;
+        }
 
         return passwordEncoder.matches(rawPassword, passwordHash);
     }

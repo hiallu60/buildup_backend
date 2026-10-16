@@ -19,7 +19,12 @@ class S3ConnectionServiceTest {
         S3Client s3Client = fakeS3Client(capturedRequest);
         AwsProperties properties = new AwsProperties(
                 "ap-northeast-2",
-                new AwsProperties.S3("buildup-test-bucket", false, 10 * 1024 * 1024)
+                new AwsProperties.S3(
+                        "buildup-test-bucket",
+                        false,
+                        10 * 1024 * 1024,
+                        20 * 1024 * 1024
+                )
         );
         S3ConnectionService service = new S3ConnectionService(s3Client, properties);
 

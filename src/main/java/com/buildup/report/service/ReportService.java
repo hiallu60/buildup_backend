@@ -14,11 +14,14 @@ import com.buildup.report.entity.ReportReviewStatus;
 import com.buildup.report.repository.ReportRepository;
 import com.buildup.report.repository.ReportReviewEventRepository;
 import com.buildup.site.entity.Site;
+import com.buildup.site.entity.ProgressCalculationMode;
 import com.buildup.site.entity.SiteProcess;
 import com.buildup.site.repository.SiteProcessRepository;
 import com.buildup.site.repository.SiteRepository;
 import com.buildup.site.service.SiteAccessService;
+import com.buildup.site.service.SiteProgressService;
 import com.buildup.storage.service.S3PhotoStorageService;
+import com.buildup.storage.service.S3ReportFileStorageService;
 import com.buildup.user.entity.User;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +34,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Service
 public class ReportService {
@@ -43,6 +48,9 @@ public class ReportService {
     private final SiteProcessRepository siteProcessRepository;
     private final SiteAccessService siteAccessService;
     private final S3PhotoStorageService photoStorageService;
+    private final S3ReportFileStorageService fileStorageService;
+    private final ReportCheckService reportCheckService;
+    private final SiteProgressService siteProgressService;
 
     public ReportService(
             ReportRepository reportRepository,
@@ -50,7 +58,10 @@ public class ReportService {
             SiteRepository siteRepository,
             SiteProcessRepository siteProcessRepository,
             SiteAccessService siteAccessService,
-            S3PhotoStorageService photoStorageService
+            S3PhotoStorageService photoStorageService,
+            S3ReportFileStorageService fileStorageService,
+            ReportCheckService reportCheckService,
+            SiteProgressService siteProgressService
     ) {
         this.reportRepository = reportRepository;
         this.reviewEventRepository = reviewEventRepository;
@@ -58,6 +69,9 @@ public class ReportService {
         this.siteProcessRepository = siteProcessRepository;
         this.siteAccessService = siteAccessService;
         this.photoStorageService = photoStorageService;
+        this.fileStorageService = fileStorageService;
+        this.reportCheckService = reportCheckService;
+        this.siteProgressService = siteProgressService;
     }
 
     @Transactional
@@ -71,28 +85,44 @@ public class ReportService {
             );
         }
 
-        String processKey = request.processKey().trim();
-        SiteProcess process = siteProcessRepository
-                .findBySiteIdAndProcessKey(siteId, processKey)
-                .orElseThrow(() -> new ApiException(
-                        HttpStatus.NOT_FOUND,
-                        "SITE_PROCESS_NOT_FOUND",
-                        "현장 공정을 찾을 수 없습니다."
-                ));
+        String processKey = normalize(request.processKey());
+        validateProgressMode(site, processKey);
+        SiteProcess process = processKey == null
+                ? null
+                : siteProcessRepository.findBySiteIdAndProcessKey(siteId, processKey)
+                        .orElseThrow(() -> new ApiException(
+                                HttpStatus.NOT_FOUND,
+                                "SITE_PROCESS_NOT_FOUND",
+                                "현장 공정을 찾을 수 없습니다."
+                        ));
 
-        if (reportRepository.existsBySiteIdAndProcessKeyAndReviewStatus(
-                siteId,
-                processKey,
-                ReportReviewStatus.PENDING
-        )) {
+        boolean pendingReportExists = processKey == null
+                ? reportRepository.existsBySiteIdAndProcessKeyIsNullAndReviewStatus(
+                        siteId,
+                        ReportReviewStatus.PENDING
+                )
+                : reportRepository.existsBySiteIdAndProcessKeyAndReviewStatus(
+                        siteId,
+                        processKey,
+                        ReportReviewStatus.PENDING
+                );
+        if (pendingReportExists) {
             throw new ApiException(
                     HttpStatus.CONFLICT,
                     "PENDING_REPORT_ALREADY_EXISTS",
-                    "해당 공정에는 검토 대기 중인 보고서가 이미 있습니다."
+                    processKey == null
+                            ? "현장에는 검토 대기 중인 보고서가 이미 있습니다."
+                            : "해당 공정에는 검토 대기 중인 보고서가 이미 있습니다."
             );
         }
 
-        if (request.toProgress().compareTo(process.getProgress()) <= 0) {
+        if (site.getProgressCalculationMode() == ProgressCalculationMode.PROCESS_WEIGHTED) {
+            siteProgressService.validateCompleteWeights(site);
+        }
+        BigDecimal currentProgress = process == null
+                ? siteProgressService.currentProgress(site)
+                : process.getProgress();
+        if (request.toProgress().compareTo(currentProgress) <= 0) {
             throw new ApiException(
                     HttpStatus.BAD_REQUEST,
                     "REPORT_PROGRESS_MUST_INCREASE",
@@ -108,20 +138,38 @@ public class ReportService {
                 .map(this::toReportFile)
                 .toList();
 
-        Report report = reportRepository.saveAndFlush(Report.submit(
+        validateLocation(
+                request.submitLatitude(),
+                request.submitLongitude(),
+                request.submitAccuracy()
+        );
+        String work = request.work().trim();
+        Report report = Report.submit(
                 site,
-                process.getProcessKey(),
-                process.getName(),
-                process.getProgress(),
+                process == null ? null : process.getProcessKey(),
+                process == null ? null : process.getName(),
+                work,
+                currentProgress,
                 request.toProgress(),
                 normalize(request.memo()),
                 normalize(request.weather()),
                 request.workers(),
                 normalize(request.equipment()),
+                request.submitLatitude(),
+                request.submitLongitude(),
+                request.submitAccuracy(),
                 photos,
                 files,
                 author
+        );
+        reportCheckService.addSubmissionChecks(report);
+        LocalDateTime checkedAt = LocalDateTime.now();
+        report.getPhotos().forEach(photo -> reportCheckService.addPhotoChecks(
+                report,
+                photo,
+                checkedAt
         ));
+        reportRepository.saveAndFlush(report);
         log.info(
                 "event=report.created reportId={} siteId={} authorId={}",
                 report.getId(),
@@ -190,8 +238,12 @@ public class ReportService {
             );
         }
 
-        List<String> s3Keys = report.getPhotos().stream()
+        List<String> photoS3Keys = report.getPhotos().stream()
                 .map(ReportPhoto::getS3Key)
+                .filter(key -> key != null && !key.isBlank())
+                .toList();
+        List<String> fileS3Keys = report.getFiles().stream()
+                .map(ReportFile::getS3Key)
                 .filter(key -> key != null && !key.isBlank())
                 .toList();
         reportRepository.delete(report);
@@ -199,15 +251,17 @@ public class ReportService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                s3Keys.forEach(key -> photoStorageService.deleteQuietly(reportId, key));
+                photoS3Keys.forEach(key -> photoStorageService.deleteQuietly(reportId, key));
+                fileS3Keys.forEach(key -> fileStorageService.deleteQuietly(reportId, key));
             }
         });
         log.info(
-                "event=report.deleted reportId={} siteId={} actorId={} photoCount={}",
+                "event=report.deleted reportId={} siteId={} actorId={} photoCount={} fileCount={}",
                 reportId,
                 report.getSite().getId(),
                 user.getId(),
-                s3Keys.size()
+                photoS3Keys.size(),
+                fileS3Keys.size()
         );
     }
 
@@ -227,15 +281,61 @@ public class ReportService {
     }
 
     private ReportFile toReportFile(ReportFileRequest file) {
-        return ReportFile.of(
+        return ReportFile.legacy(
                 file.path().trim(),
                 file.originalName().trim(),
                 file.sizeBytes()
         );
     }
 
+    private void validateLocation(
+            BigDecimal latitude,
+            BigDecimal longitude,
+            BigDecimal accuracy
+    ) {
+        if ((latitude == null) != (longitude == null)) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "REPORT_LOCATION_INCOMPLETE",
+                    "보고서 제출 위치는 위도와 경도를 함께 입력해야 합니다."
+            );
+        }
+        if (latitude != null
+                && (latitude.compareTo(BigDecimal.valueOf(-90)) < 0
+                || latitude.compareTo(BigDecimal.valueOf(90)) > 0)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REPORT_LATITUDE_INVALID", "제출 위도가 올바르지 않습니다.");
+        }
+        if (longitude != null
+                && (longitude.compareTo(BigDecimal.valueOf(-180)) < 0
+                || longitude.compareTo(BigDecimal.valueOf(180)) > 0)) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REPORT_LONGITUDE_INVALID", "제출 경도가 올바르지 않습니다.");
+        }
+        if (accuracy != null && accuracy.signum() < 0) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "REPORT_ACCURACY_INVALID", "위치 정확도는 음수일 수 없습니다.");
+        }
+    }
+
     private String normalize(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private void validateProgressMode(Site site, String processKey) {
+        if (site.getProgressCalculationMode() == ProgressCalculationMode.PROCESS_WEIGHTED
+                && processKey == null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "REPORT_PROCESS_REQUIRED",
+                    "공정별 진행률 현장에서는 보고서에 공정 키가 필요합니다."
+            );
+        }
+        if (site.getProgressCalculationMode() == ProgressCalculationMode.MANUAL_INPUT
+                && processKey != null) {
+            throw new ApiException(
+                    HttpStatus.BAD_REQUEST,
+                    "REPORT_PROCESS_NOT_ALLOWED",
+                    "직접 입력 방식의 현장에서는 보고서에 공정 키를 사용할 수 없습니다."
+            );
+        }
     }
 
     private <T> List<T> safeList(List<T> values) {
